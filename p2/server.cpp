@@ -49,6 +49,9 @@ int main(void)
     sock_adr.sin_family = AF_INET;
     sock_adr.sin_port = htons(PORT_NUMBER);
     sock_adr.sin_addr.s_addr = htons(INADDR_ANY);
+    int optval = 1;
+    setsockopt(master_socket, TCP, SO_REUSEADDR,
+               &optval, sizeof(optval));
     if (bind(master_socket, (struct sockaddr *) &sock_adr,  
          sizeof(sock_adr)) < 0)
     {
@@ -69,9 +72,6 @@ int main(void)
     int e_poll = epoll_create1(0);
     epoll_ctl(e_poll, EPOLL_CTL_ADD, master_socket, &event);
     std::set<int> clients;
-    int optval = 1;
-    setsockopt(master_socket, TCP, SO_REUSEADDR,
-               &optval, sizeof(optval));
     while (1)
     {
         size_t N = epoll_wait(e_poll, events, MAX_EVENTS, -1);
