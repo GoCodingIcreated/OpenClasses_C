@@ -55,17 +55,8 @@ int main(int argc, char **argv)
     char buffer[1024];
     while(1)
     {
-        poll(&pfd, 1, -1);
+        poll(&pfd, 1, 1);
         
-        
-       /* if (pfd[0].revents & POLLIN)
-        {
-            int readed = 0;
-            readed = recv(pfd[0].fd, buffer, 
-                          sizeof(buffer), MSG_NOSIGNAL);
-            buffer[readed] = 0;
-            send(pfd[1].fd, buffer, readed, MSG_NOSIGNAL);
-        }*/
         if (pfd.revents & POLLIN)
         {
             int readed = 0;
@@ -74,11 +65,12 @@ int main(int argc, char **argv)
             buffer[readed] = 0;
             printf("%s", buffer);
             fflush(stdout);
-            //send(1, buffer, readed, MSG_NOSIGNAL);
         }
         fgets(buffer, sizeof(buffer), stdin);
         if (strcmp(buffer, "EXIT\n") == 0)
             break;
+        if (strcmp(buffer, "\n") == 0)
+            continue;
         send(pfd.fd, buffer, strlen(buffer), MSG_NOSIGNAL);
     }
     shutdown(client_socket, SHUT_RDWR);
