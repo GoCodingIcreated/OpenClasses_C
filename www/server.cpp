@@ -23,17 +23,21 @@ char HELLO_MSG[] = "Welcome!\n";
 void
 get_call_back(struct evhttp_request *req, void *arg)
 {
+    char *s = (char*) calloc(1, strlen((char*)arg)
+                        + strlen(evhttp_request_get_uri(req)));
+    sprintf(s, "%s/%s", (char*)arg, evhttp_request_get_uri(req));
     struct evbuffer *buf = evbuffer_new();
-    int fd = open(evhttp_request_get_uri(req), O_RDONLY);
+    int fd = open(s, O_RDONLY);
     if (fd < 0)
     {
+        free(s);
         evhttp_send_error(req, 404, NULL);
         return;
     }
+    free(s);
     long long size = lseek(fd, 0, SEEK_END);
     lseek(fd, 0, SEEK_SET);
     evbuffer_add_file(buf, fd, 0, size);
-    close(fd);
     evhttp_send_reply(req, HTTP_OK, "OK", buf);
     evbuffer_free(buf);
 }
@@ -41,12 +45,17 @@ get_call_back(struct evhttp_request *req, void *arg)
 void
 head_call_back(struct evhttp_request *req, void *arg)
 {
-    int fd = open(evhttp_request_get_uri(req), O_RDONLY);
+    char *s = (char*) calloc(1, strlen((char*)arg)
+                        + strlen(evhttp_request_get_uri(req)));
+    sprintf(s, "%s/%s", (char*)arg, evhttp_request_get_uri(req));
+    int fd = open(s, O_RDONLY);
     if (fd < 0)
     {
         evhttp_send_error(req, 404, NULL);
+        free(s);
         return;
     }
+    free(s);
     close(fd);
     evhttp_send_reply(req, HTTP_OK, "OK", NULL);
 }
@@ -54,21 +63,25 @@ head_call_back(struct evhttp_request *req, void *arg)
 void
 post_call_back(struct evhttp_request *req, void *arg)
 {
-    int fd = open(evhttp_request_get_uri(req), O_WRONLY);
+    char *s = (char *) calloc(1, strlen((char*)arg)
+                        + strlen(evhttp_request_get_uri(req)));
+    sprintf(s, "%s/%s", (char*)arg, evhttp_request_get_uri(req));
+    int fd = open(s, O_WRONLY);
     if (fd > 0)
     {
         evhttp_send_error(req, 404, NULL);
         close(fd);
+        free(s);
         return ;
     }
-    fd = open(evhttp_request_get_uri(req), 
-              O_WRONLY | O_CREAT | O_TRUNC, 0664);
+    fd = open(s, O_WRONLY | O_CREAT | O_TRUNC, 0664);
     if (fd < 0)
     {
+        free(s);
         evhttp_send_error(req, 404, NULL);
         return ;
     }
-
+    free(s);
     struct evbuffer *buf = evhttp_request_get_input_buffer(req);
     evbuffer_write(buf, fd);
     close(fd);
@@ -79,10 +92,16 @@ void
 request_call_back(struct evhttp_request * req, void *arg)
 {
     evhttp_cmd_type type  = evhttp_request_get_command(req);
+    const char *t = evhttp_request_get_uri(req);
+    printf("%s\n", t);
+    //struct evbuffer *buf = evhttp_request_get_output_buffer(req);
     if (type == EVHTTP_REQ_GET)
         get_call_back(req, arg);
     else if (type == EVHTTP_REQ_POST)
+    {
+        printf("OLOLO\n");
         post_call_back(req, arg);
+    }
     else if (type == EVHTTP_REQ_HEAD)
         head_call_back(req, arg);
     else
@@ -136,12 +155,14 @@ main(int argc, char **argv)
     struct evhttp *server = evhttp_new(ev_base);
     evhttp_bind_socket(server, ip, port);
     
-    evhttp_set_gencb(server, request_call_back, NULL);
+    evhttp_set_gencb(server, request_call_back, dir_name);
     
     event_base_dispatch(ev_base);
     
     evhttp_free(server);
     event_base_free(ev_base);
+    free(ip);
+    free(dir_name);
     printf("loop ended.\n");
     return 0;
 }
