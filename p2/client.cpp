@@ -60,13 +60,20 @@ int main(int argc, char **argv)
         if (pfd.revents & POLLIN)
         {
             int readed = 0;
+
             readed = recv(pfd.fd, buffer, 
                           sizeof(buffer), MSG_NOSIGNAL);
+            if (readed <= 0)
+            {
+                shutdown(client_socket, SHUT_RDWR);
+                close(client_socket);
+            }
             buffer[readed] = 0;
             printf("%s", buffer);
             fflush(stdout);
         }
         fgets(buffer, sizeof(buffer), stdin);
+        printf("!");
         if (strcmp(buffer, "EXIT\n") == 0)
             break;
         if (strcmp(buffer, "\n") == 0)
