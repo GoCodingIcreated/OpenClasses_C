@@ -73,7 +73,6 @@ int main(int argc, char **argv)
             fflush(stdout);
         }
         fgets(buffer, sizeof(buffer), stdin);
-        printf("!");
         if (strcmp(buffer, "EXIT\n") == 0)
             break;
         if (strcmp(buffer, "\n") == 0)
