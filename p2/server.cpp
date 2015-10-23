@@ -45,6 +45,7 @@ int main(void)
         std::cout << strerror(errno) << std::endl;
         return 1;
     }
+    set_nonblock(master_socket);
     struct sockaddr_in sock_adr;
     sock_adr.sin_family = AF_INET;
     sock_adr.sin_port = htons(PORT_NUMBER);
@@ -65,7 +66,7 @@ int main(void)
     }
     struct epoll_event event;
     event.data.fd = master_socket;
-    event.events = EPOLLIN | EPOLLET;
+    event.events = EPOLLIN;// | EPOLLET;
     struct epoll_event *events;
     events = (struct epoll_event*) calloc(MAX_EVENTS, 
                                            sizeof(*events));
@@ -77,16 +78,7 @@ int main(void)
         size_t N = epoll_wait(e_poll, events, MAX_EVENTS, -1);
         for (size_t i = 0; i < N; ++i)
         {
-            if ((events[i].events & EPOLLERR) || 
-                (events[i].events & EPOLLHUP))
-            {
-                shutdown(events[i].data.fd, SHUT_RDWR);
-                close(events[i].data.fd);
-                fprintf(stdout, "connection terminated\n");
-                fflush(stdout);
-                clients.erase(events[i].data.fd);
-            }
-            else if(events[i].data.fd == master_socket)
+            if(events[i].data.fd == master_socket)
             {
                 int slave_socket = accept(master_socket, 0, 0);
                 set_nonblock(slave_socket);
@@ -117,7 +109,6 @@ int main(void)
                 buffer[readed] = 0;
                 fprintf(stdout, "%s", buffer);
                 fflush(stdout);
-                //std::cout << buffer << std::endl;
                 for (auto it = clients.begin(); it != clients.end();
                      it++)
                 {
