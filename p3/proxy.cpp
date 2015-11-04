@@ -15,7 +15,10 @@
 #include <map>
 #include <vector>
 std::map<int, std::vector<std::pair<char*, int> > > config_map;
-    
+std::map<int, int> sender_reciever;
+char localhost[] = "127.0.0.1";
+const int MAX_PORTS = 100;
+
 int
 set_nonblock(int fd)
 {
@@ -44,6 +47,7 @@ read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
     }
     buffer[readed] = 0;
     printf("%s", buffer);
+    send(sender_reciever[watcher->fd], buffer, readed, MSG_NOSIGNAL);
 }
 
 static void
@@ -52,8 +56,6 @@ accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
     std::cout << "accept!\n";
     
     // client --> proxy --> server
-    struct ev_io *client_watcher = (struct ev_io *) calloc(1,
-                                    sizeof(*client_watcher));
     int client_socket = accept(watcher->fd, 0, 0);
     if (client_socket < 0)
     {
@@ -61,22 +63,41 @@ accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
         return;
     }
     set_nonblock(client_socket);
+    
+    struct ev_io *client_watcher = (struct ev_io *) calloc(1,
+                                    sizeof(*client_watcher));
     ev_io_init(client_watcher, read_cb, client_socket, EV_READ);
     ev_io_start(loop, client_watcher);
-/*
+    
     // server --> proxy --> client
-    struct ev_io *server_watcher = (struct ev_io *) calloc(1,
-                                    sizeof(*server_watcher));
+    int rand_number = rand() % config_map[watcher->fd].size();
+    
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket < 0)
     {
         std::cout << strerror(errno) << std::endl;
         return;
     }
-    set_nonblock(server_socket);
-    ev_io_init(client_watcher, read_cb, server_socket, EV_READ);
+    //set_nonblock(server_socket);
+    
+    auto tmp = config_map[watcher->fd][rand_number];
+    struct sockaddr_in sock_adr;
+    sock_adr.sin_family = AF_INET;
+    sock_adr.sin_port = htons(tmp.second);
+    inet_aton(tmp.first, &sock_adr.sin_addr);
+    if (connect(server_socket, (struct sockaddr*)&sock_adr,
+                sizeof(sock_adr)) < 0)
+    {
+        std::cout << strerror(errno) << std::endl;
+        return;
+    }
+    struct ev_io *server_watcher = (struct ev_io *) calloc(1,
+                                    sizeof(*server_watcher));
+    ev_io_init(server_watcher, read_cb, server_socket, EV_READ);
     ev_io_start(loop, server_watcher);
-*/
+    
+    sender_reciever[client_socket] = server_socket;
+    sender_reciever[server_socket] = client_socket;
 }
 
 int
@@ -118,32 +139,44 @@ create_master_socket(char *ip, int port)
     return master_socket;
 }
 
-void
+
+
+/*
+* config format:
+* <port_number>;<space><ip><space>:<port>[,<space><ip><space>:<port>]
+*/
+int
 read_config(FILE *config)
 {
     char buffer[1024];
-    while (fgets(buffer, sizeof(buffer), config) != NULL)
-    { 
-        int port;
-        int offset = 0;
-        if (sscanf(buffer, "%d%n", &port, &offset) == 2)
-        {
-            std::cout << "WARNING: empty line in config or"
-                         " invalid port number\n";
-            continue;
-        }
-        int master_socket = port;//cnt++;//create_socket(ip, port);
-        config_map[master_socket] = std::vector<std::pair<char*, int> >();
-        char ip_local[20];
-        char *tmp_pointer = buffer + offset;
-        while (sscanf(tmp_pointer, "%s:%d%n", 
-                      ip_local, &port, &offset) == 2)
-        {
-            tmp_pointer += offset;
-            char *ip = strdup(ip_local);
-            config_map[master_socket].push_back(std::make_pair(ip, port));
-        }
+    if (fgets(buffer, sizeof(buffer), config) == NULL)
+        return -1;
+    int port;
+    int offset = 0;
+    if (sscanf(buffer, "%d; %n", &port, &offset) != 1)
+    {
+        std::cout << "WARNING: empty line in config or"
+                     " invalid port number\n";
+        return -1;
     }
+    int master_socket = create_master_socket(localhost, port);
+    if (master_socket < 0)
+    {
+        std::cout << "ERROR: cannot create master_socket\n";
+        return -1;
+    }
+
+    config_map[master_socket] = std::vector<std::pair<char*, int> >();
+    char ip_local[20];
+    char *tmp_pointer = buffer + offset;
+    while (sscanf(tmp_pointer, "%s : %d%n", 
+                  ip_local, &port, &offset) == 2)
+    {
+        tmp_pointer += offset + 1; // +1 for ','
+        char *ip = strdup(ip_local);
+        config_map[master_socket].push_back(std::make_pair(ip, port));
+    }
+    return master_socket;
 }
 
 void
@@ -154,7 +187,7 @@ print_config()
         printf("%d\n", i->first);
         for (size_t j = 0; j < i->second.size(); ++j)
         {
-            printf("\t!%s!:!%d!\n", i->second[j].first,
+            printf("\t%s:%d\n", i->second[j].first,
                    i->second[j].second);
         }
     }
@@ -169,18 +202,23 @@ main(int argc, char ** argv)
         std::cout << "No such config file\n";
         return 1;
     }
-    read_config(config);
-    print_config();
-    fclose(config);
-    return 0;
     
     struct ev_loop *loop = ev_default_loop(0);
-    ev_io accept_watcher;
-    int master_socket = 1;
-    ev_io_init(&accept_watcher, accept_cb, master_socket, EV_READ);
+    ev_io accept_watchers[2 * MAX_PORTS]; // max listening ports
+    int max_watcher = 0;
+    int master_socket;
+    while ((master_socket = read_config(config)) != -1)
+    {
+        if (max_watcher == 2 * MAX_PORTS)
+            break;
+        ev_io_init(&accept_watchers[max_watcher], accept_cb, 
+                   master_socket, EV_READ);
+        ev_io_start(loop, &accept_watchers[max_watcher]);
+        max_watcher++;
+    }
+    print_config();
+    fclose(config);
     
-    ev_io_start(loop, &accept_watcher);
-
     ev_run(loop);
     
 
