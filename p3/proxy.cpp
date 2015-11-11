@@ -29,6 +29,11 @@ write_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
 {
     int fd = senders_map[watcher->fd];
     My_reciever *rec = sender_reciever[fd];
+    if (rec == NULL)
+    {
+        printf("Hmmm, NULL pointer in write_cb\n");
+        return;
+    }
     int wrote = my_reciever_write(rec, MAX_BUFFER_SIZE);
     if (wrote == -1 || my_reciever_is_empty(rec))
     {
@@ -38,6 +43,7 @@ write_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
         if (wrote == -1 || my_reciever_is_closed(rec))
         {
             my_reciever_destroy(rec);
+            sender_reciever[fd] = NULL;
             sender_reciever.erase(fd);
         }
     }
@@ -47,6 +53,14 @@ static void
 read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
 {
     My_reciever *rec = sender_reciever[watcher->fd];
+    if (rec == NULL)
+    {
+        printf("Hmmm, NULL pointer in read_cb\n");
+        ev_io_stop(loop, watcher);
+        free(watcher);
+        sender_reciever.erase(watcher->fd);
+        return;
+    }
     int was_empty = my_reciever_is_empty(rec);
     if (my_reciever_is_full(rec))
         return;
@@ -60,6 +74,7 @@ read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
         if (my_reciever_is_empty(rec))
         {
             my_reciever_destroy(rec);
+            sender_reciever[watcher->fd] = NULL;
             sender_reciever.erase(watcher->fd);
         }
         return;

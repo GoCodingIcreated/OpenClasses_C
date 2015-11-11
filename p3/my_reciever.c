@@ -21,8 +21,8 @@ my_reciever_init(size_t _buffer_size,
     my_recv->data_size = 0;
     my_recv->reciever_fd = recv_fd;
     my_recv->sender_fd = send_fd;
-    my_recv->buffer1 = (char*) calloc(1, sizeof(char));
-    my_recv->buffer2 = (char*) calloc(1, sizeof(char));
+    my_recv->buffer1 = (char*) calloc(_buffer_size, sizeof(char));
+    my_recv->buffer2 = (char*) calloc(_buffer_size, sizeof(char));
     my_recv->closed = 0;
     return my_recv;
 }
@@ -46,7 +46,7 @@ my_reciever_read(My_reciever *rcv, size_t size)
     int tmp = min(size, rcv->buffer_size - rcv->data_size);
     if (tmp == 0)
         return 0;
-    int readed = read(rcv->sender_fd, rcv->buffer2, tmp);
+    int readed = recv(rcv->sender_fd, rcv->buffer2, tmp, MSG_NOSIGNAL);
     if (readed <= 0)
         return readed;
     tmp = (rcv->begin + rcv->data_size) % rcv->buffer_size;
@@ -73,7 +73,7 @@ my_reciever_write(My_reciever *rcv, size_t size)
         memcpy(&rcv->buffer2[rcv->buffer_size - rcv->begin],
                 &rcv->buffer1[0],
                 tmp - (rcv->buffer_size - rcv->begin));
-    int wrote = write(rcv->reciever_fd, rcv->buffer2, tmp);
+    int wrote = send(rcv->reciever_fd, rcv->buffer2, tmp, MSG_NOSIGNAL);
     if (wrote <= 0)
         return wrote;
     rcv->begin = (rcv->begin + wrote) % rcv->buffer_size;

@@ -115,6 +115,8 @@ create_client_socket(int master_socket)
     int client_socket = accept(master_socket, 0, 0);
     if (client_socket >= 0)
         set_nonblock(client_socket);
+    else
+        std::cout << strerror(errno) << std::endl;
     return client_socket;
 }
 
@@ -123,16 +125,23 @@ create_server_socket(char *ip, int port)
 {
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket < 0)
+    {
+        std::cout << strerror(errno) << std::endl;
         return -1;
-    set_nonblock(server_socket); // ?
+    }
+    //set_nonblock(server_socket); // ?
+    
     struct sockaddr_in sock_adr;
+    memset(&sock_adr, 0, sizeof(sock_adr));
     sock_adr.sin_family = AF_INET;
     sock_adr.sin_port = htons(port);
     inet_aton(ip, &sock_adr.sin_addr);
     if (connect(server_socket, (struct sockaddr*)&sock_adr,
-            sizeof(sock_adr) < 0))
+            sizeof(sock_adr)) < 0)
     {
         close(server_socket);
+        std::cout << strerror(errno) << std::endl;
+        printf("%d\n%s\n", port, ip);
         return -1;
     }
     return server_socket;
