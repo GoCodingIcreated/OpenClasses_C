@@ -1,5 +1,7 @@
 #include "my_inet.h"
 
+static char localhost[] = "127.0.0.1";
+
 int
 set_nonblock(int fd)
 {
@@ -58,7 +60,8 @@ create_master_socket(char *ip, int port)
 * <port_number>;<space><ip><space>:<port>[,<space><ip><space>:<port>]
 */
 int
-read_config(FILE *config)
+read_config(FILE *config, 
+    std::map<int, std::vector<std::pair<char*, int> > > &config_map)
 {
     char buffer[1024];
     if (fgets(buffer, sizeof(buffer), config) == NULL)
@@ -92,7 +95,8 @@ read_config(FILE *config)
 }
 
 void
-print_config()
+print_config(std::map<int, 
+             std::vector<std::pair<char*,int> > > &config_map)
 {
     for (auto i = config_map.begin(); i != config_map.end(); ++i)
     {
@@ -124,7 +128,7 @@ create_server_socket(char *ip, int port)
     struct sockaddr_in sock_adr;
     sock_adr.sin_family = AF_INET;
     sock_adr.sin_port = htons(port);
-    inet_aton(ip, &sock_adr.sin_adr);
+    inet_aton(ip, &sock_adr.sin_addr);
     if (connect(server_socket, (struct sockaddr*)&sock_adr,
             sizeof(sock_adr) < 0))
     {

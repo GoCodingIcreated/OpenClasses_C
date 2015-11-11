@@ -7,6 +7,7 @@ struct My_reciever
     int begin;
     int reciever_fd;
     int sender_fd;
+    int closed;
 };
 
 
@@ -22,6 +23,7 @@ my_reciever_init(size_t _buffer_size,
     my_recv->sender_fd = send_fd;
     my_recv->buffer1 = (char*) calloc(1, sizeof(char));
     my_recv->buffer2 = (char*) calloc(1, sizeof(char));
+    my_recv->closed = 0;
     return my_recv;
 }
 
@@ -108,4 +110,22 @@ int
 my_reciever_is_empty(My_reciever *rcv)
 {
     return rcv->data_size == 0;
+}
+
+void
+my_reciever_close(My_reciever *rcv)
+{
+    rcv->closed = 1;
+}
+
+int
+my_reciever_is_closed(My_reciever *rcv)
+{
+    return rcv->closed;
+}
+
+int
+my_reciever_get_reciever(My_reciever *rcv)
+{
+    return rcv->reciever_fd;
 }

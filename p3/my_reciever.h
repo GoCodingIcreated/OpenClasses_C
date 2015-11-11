@@ -32,4 +32,14 @@ my_reciever_is_full(My_reciever *my_recv);
 
 int
 my_reciever_is_empty(My_reciever *my_recv);
+
+int
+my_reciever_get_reciever(My_reciever *my_recv);
+
+void
+my_reciever_close(My_reciever *my_recv);
+
+int
+my_reciever_is_closed(My_reciever *my_recv);
+
 #endif

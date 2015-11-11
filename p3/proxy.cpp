@@ -18,32 +18,62 @@
 #include "my_inet.h"
 
 std::map<int, std::vector<std::pair<char*, int> > > config_map;
-std::map<int, *My_reciever> sender_reciever;
-char localhost[] = "127.0.0.1";
+std::map<int, My_reciever*> sender_reciever;
+std::map<int, int> senders_map;
+
 const int MAX_PORTS = 100;
 const int MAX_BUFFER_SIZE = 1024;
 
 static void
 write_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
 {
-
+    int fd = senders_map[watcher->fd];
+    My_reciever *rec = sender_reciever[fd];
+    int wrote = my_reciever_write(rec, MAX_BUFFER_SIZE);
+    if (wrote == -1 || my_reciever_is_empty(rec))
+    {
+        senders_map.erase(watcher->fd);
+        ev_io_stop(loop, watcher);
+        free(watcher);
+        if (wrote == -1 || my_reciever_is_closed(rec))
+        {
+            my_reciever_destroy(rec);
+            sender_reciever.erase(fd);
+        }
+    }
 }
 
 static void
 read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
 {
-    auto reciever = sender_reciever[wathcer->fd];
-    int readed = recv(watcher->fd, buffer, reciever->buffer, 
-                    reciever->buffer_size, MSG_NOSIGNAL);
+    My_reciever *rec = sender_reciever[watcher->fd];
+    int was_empty = my_reciever_is_empty(rec);
+    if (my_reciever_is_full(rec))
+        return;
+    
+    int readed = my_reciever_read(rec, MAX_BUFFER_SIZE);
     if (readed <= 0)
     {
         ev_io_stop(loop, watcher);
         free(watcher);
+        my_reciever_close(rec);
+        if (my_reciever_is_empty(rec))
+        {
+            my_reciever_destroy(rec);
+            sender_reciever.erase(watcher->fd);
+        }
         return;
     }
-    buffer[readed] = 0;
-    printf("%s", buffer);
-    send(sender_reciever[watcher->fd], buffer, readed, MSG_NOSIGNAL);
+    int reciever = my_reciever_get_reciever(rec);
+    senders_map[reciever] = watcher->fd;
+    if (was_empty)
+    {
+        struct ev_io *write_watcher = (struct ev_io *) 
+            calloc(1, sizeof(*write_watcher));
+        ev_io_init(write_watcher, write_cb, reciever, EV_WRITE);
+        ev_io_start(loop, write_watcher);
+    }
+    //send(sender_reciever[watcher->fd], buffer, readed, MSG_NOSIGNAL);
 }
 
 static void
@@ -62,7 +92,7 @@ accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
     // server --> proxy --> client
     int rand_number = rand() % config_map[watcher->fd].size();
     auto tmp = config_map[watcher->fd][rand_number];
-    int server_socket = create_server_socket(tmp.first, tmp.second)
+    int server_socket = create_server_socket(tmp.first, tmp.second);
     if (server_socket < 0)
     {
         shutdown(client_socket, SHUT_RDWR);
@@ -86,9 +116,12 @@ accept_cb(struct ev_loop *loop, struct ev_io *watcher, int revents)
     // save in map for every sender his adresat
     My_reciever *rec_serv, *rec_client;
     
-
-    sender_reciever[client_socket] = reciever_server;
-    sender_reciever[server_socket] = reciever_client;
+    rec_client = my_reciever_init(MAX_BUFFER_SIZE, client_socket,
+                                server_socket);
+    rec_serv = my_reciever_init(MAX_BUFFER_SIZE, server_socket,
+                                client_socket);
+    sender_reciever[client_socket] = rec_serv;
+    sender_reciever[server_socket] = rec_client;
 }
 
 int
@@ -105,7 +138,7 @@ main(int argc, char ** argv)
     ev_io accept_watchers[2 * MAX_PORTS]; // max listening ports
     int max_watcher = 0;
     int master_socket;
-    while ((master_socket = read_config(config)) != -1)
+    while ((master_socket = read_config(config, config_map)) != -1)
     {
         if (max_watcher == 2 * MAX_PORTS)
             break;
@@ -114,7 +147,7 @@ main(int argc, char ** argv)
         ev_io_start(loop, &accept_watchers[max_watcher]);
         max_watcher++;
     }
-    print_config();
+    print_config(config_map);
     fclose(config);
     
     ev_run(loop);
